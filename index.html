@@ -1,0 +1,1047 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Level Data Plotter — วิเคราะห์ค่าระดับ</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js';document.head.appendChild(s);"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/tesseract.js/5.1.1/tesseract.min.js" onerror="this.onerror=null;var s=document.createElement('script');s.src='https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js';document.head.appendChild(s);"></script>
+<style>
+  :root{
+    --bg: #0d1520;
+    --panel: #131e2b;
+    --panel2: #182636;
+    --line: #26384d;
+    --ink: #d7e2ee;
+    --ink-dim: #8fa3ba;
+    --amber: #f2a23c;
+    --cyan: #4fd3e0;
+    --red: #e0605a;
+    --green: #8bd17c;
+    --mono: 'Consolas','Menlo','Courier New',monospace;
+    --shadow: 0 2px 10px rgba(0,0,0,0.25);
+    --bg-texture: none;
+  }
+
+  [data-theme="blueprint"]{
+    --bg: #eef3f8;
+    --panel: #ffffff;
+    --panel2: #eaf1f8;
+    --line: #c3d6e4;
+    --ink: #16324a;
+    --ink-dim: #5c7d97;
+    --amber: #c9670f;
+    --cyan: #1f6fa8;
+    --red: #c23b34;
+    --green: #2e7d4f;
+    --shadow: 0 1px 3px rgba(20,50,80,0.10);
+    --bg-texture:
+      repeating-linear-gradient(0deg, rgba(31,111,168,0.06) 0 1px, transparent 1px 28px),
+      repeating-linear-gradient(90deg, rgba(31,111,168,0.06) 0 1px, transparent 1px 28px);
+  }
+
+  [data-theme="terminal"]{
+    --bg: #060a06;
+    --panel: #081008;
+    --panel2: #0d1c0d;
+    --line: #1e4a1e;
+    --ink: #baf0ba;
+    --ink-dim: #5f9a5f;
+    --amber: #ffb000;
+    --cyan: #39ff6a;
+    --red: #ff5555;
+    --green: #39ff6a;
+    --shadow: none;
+    --bg-texture: repeating-linear-gradient(180deg, rgba(57,255,106,0.025) 0 2px, transparent 2px 4px);
+  }
+
+  *{box-sizing:border-box;}
+  body{
+    margin:0; background:var(--bg); background-image:var(--bg-texture); color:var(--ink);
+    font-family:'Segoe UI',Arial,sans-serif;
+    min-height:100vh;
+    transition: background-color .2s, color .2s;
+  }
+  [data-theme="terminal"] body{ text-shadow: 0 0 6px rgba(57,255,106,0.15); }
+  [data-theme="terminal"] .amber-text, [data-theme="terminal"] .stats .v{ text-shadow: 0 0 6px rgba(255,176,0,0.25); }
+
+  .wrap{max-width:1400px; margin:0 auto; padding:24px 24px 60px;}
+  header{
+    display:flex; align-items:center; justify-content:space-between;
+    border-bottom:1px solid var(--line); padding-bottom:16px; margin-bottom:22px;
+    flex-wrap:wrap; gap:12px;
+  }
+  header .title-block{display:flex; flex-direction:column; gap:2px;}
+  header h1{
+    font-family:var(--mono); font-size:21px; font-weight:700; letter-spacing:0.5px; margin:0;
+    color:var(--amber);
+  }
+  header h1 span{color:var(--ink-dim); font-weight:400; font-size:14px;}
+  header .tag{font-family:var(--mono); font-size:11px; color:var(--ink-dim);}
+
+  .toolbar-btn{
+    background:var(--panel2); color:var(--ink); border:1px solid var(--line); border-radius:6px;
+    padding:9px 14px; font-size:13px; cursor:pointer; font-family:var(--mono);
+  }
+  .toolbar-btn:hover{border-color:var(--cyan);}
+
+  .controls{display:flex; align-items:center; gap:10px; flex-wrap:wrap;}
+
+  .primary-btn{
+    background:var(--amber); color:#241703; border:none; border-radius:6px;
+    padding:10px 18px; font-weight:700; font-size:13px; cursor:pointer;
+    font-family:'Segoe UI',Arial,sans-serif;
+  }
+  [data-theme="blueprint"] .primary-btn{color:#fff;}
+  [data-theme="terminal"] .primary-btn{color:#04160a;}
+  .primary-btn:hover{filter:brightness(1.08);}
+  .ghost-btn{
+    background:transparent; border:1px solid var(--line); color:var(--ink-dim);
+    border-radius:6px; padding:10px 16px; font-size:13px; cursor:pointer;
+  }
+  .ghost-btn:hover{border-color:var(--ink-dim); color:var(--ink);}
+
+  .section{margin-bottom:22px;}
+  .panel{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:20px 22px; box-shadow:var(--shadow);
+  }
+  .panel h2{
+    font-family:var(--mono); font-size:12px; text-transform:uppercase; letter-spacing:1px;
+    color:var(--ink-dim); margin:0 0 14px; font-weight:700;
+  }
+
+  .toolbar-grid{display:grid; grid-template-columns:repeat(3,1fr); gap:20px;}
+  @media (max-width:980px){ .toolbar-grid{grid-template-columns:1fr;} }
+
+  .drop{
+    border:1.5px dashed var(--line); border-radius:6px; padding:20px 14px;
+    text-align:center; cursor:pointer; transition:border-color .15s, background .15s;
+  }
+  .drop:hover, .drop.drag{border-color:var(--amber); background:var(--panel2);}
+  .drop p{margin:0 0 4px; font-size:13px; color:var(--ink);}
+  .drop small{color:var(--ink-dim); font-size:11px;}
+  input[type=file]{display:none;}
+
+  .fname{font-family:var(--mono); font-size:12px; color:var(--cyan); margin-top:8px; word-break:break-all;}
+
+  label{display:block; font-size:12px; color:var(--ink-dim); margin:12px 0 6px;}
+  select, textarea, input[type=number]{
+    width:100%; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:4px; padding:8px 10px; font-family:var(--mono); font-size:13px;
+  }
+  textarea{min-height:80px; resize:vertical;}
+
+  button{
+    background:var(--amber); color:#241703; border:none; border-radius:4px;
+    padding:9px 16px; font-weight:700; font-size:13px; cursor:pointer; margin-top:12px;
+    font-family:'Segoe UI',Arial,sans-serif;
+  }
+  [data-theme="blueprint"] button{color:#fff;}
+  [data-theme="terminal"] button{color:#04160a;}
+  button:hover{filter:brightness(1.08);}
+  button.ghost{
+    background:transparent; border:1px solid var(--line); color:var(--ink-dim); margin-left:8px;
+  }
+
+  .stats-row{display:grid; grid-template-columns:repeat(4,1fr); gap:16px;}
+  @media (max-width:820px){ .stats-row{grid-template-columns:repeat(2,1fr);} }
+  .stat-card{
+    background:var(--panel); border:1px solid var(--line); border-radius:8px;
+    padding:16px 18px; box-shadow:var(--shadow);
+  }
+  .stat-card .k{color:var(--ink-dim); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; font-family:var(--mono);}
+  .stat-card .v{color:var(--amber); font-size:22px; margin-top:6px; font-family:var(--mono); font-weight:700;}
+  .stat-card .v.ok{color:var(--green);}
+  .stat-card .v.warn{color:var(--red);}
+
+  .tol-row{display:flex; align-items:center; gap:10px; margin-top:16px;}
+  .tol-row label{margin:0; white-space:nowrap;}
+  .tol-row input{width:110px;}
+
+  #chart{width:100%; max-width:100%;}
+  .chart-wrap{width:100%;}
+
+  table{width:100%; border-collapse:collapse; font-family:var(--mono); font-size:12px; margin-top:6px;}
+  th,td{padding:7px 10px; text-align:right; border-bottom:1px solid var(--line);}
+  th:first-child, td:first-child{text-align:left;}
+  th{color:var(--ink-dim); font-weight:700; font-size:11px; text-transform:uppercase;}
+  tr:hover td{background:var(--panel2);}
+  .tbl-wrap{max-height:400px; overflow:auto;}
+
+  .empty{color:var(--ink-dim); font-size:13px; text-align:center; padding:40px 0;}
+  .legend{display:flex; gap:18px; font-size:12px; color:var(--ink-dim); margin-top:10px; flex-wrap:wrap;}
+  .legend span{display:flex; align-items:center; gap:6px;}
+  .dot{width:10px; height:10px; border-radius:2px; display:inline-block;}
+
+  tr.flag td{background:rgba(224,96,90,0.10);}
+  tr.flag td:nth-child(6){color:var(--red); font-weight:700;}
+  td.resid-flag{color:var(--cyan); font-weight:700;}
+
+  .badge{display:inline-block; padding:2px 8px; border-radius:10px; font-size:11px; font-family:var(--mono); font-weight:700; margin-left:8px;}
+  .badge.ok{background:rgba(139,209,124,0.15); color:var(--green);}
+  .badge.warn{background:rgba(224,96,90,0.15); color:var(--red);}
+
+  .analysis{font-size:13px; line-height:1.7; color:var(--ink);}
+  .analysis h3{font-family:var(--mono); font-size:12px; color:var(--cyan); text-transform:uppercase; letter-spacing:0.5px; margin:16px 0 6px;}
+  .analysis h3:first-child{margin-top:0;}
+  .analysis ul{margin:4px 0 0; padding-left:18px;}
+  .analysis li{margin-bottom:4px;}
+  .analysis .num{font-family:var(--mono); color:var(--amber);}
+
+  .ocr-row{display:flex; gap:10px; margin-top:10px;}
+  .ocr-btn{
+    flex:1; background:var(--panel2); border:1px solid var(--line); color:var(--ink);
+    border-radius:4px; padding:10px 8px; font-size:12px; cursor:pointer; text-align:center;
+    margin-top:0; font-family:'Segoe UI',Arial,sans-serif;
+  }
+  .ocr-btn:hover{border-color:var(--cyan);}
+  .thumb{max-width:100%; border-radius:4px; margin-top:10px; border:1px solid var(--line); display:none;}
+  .progress{height:6px; background:var(--panel2); border-radius:3px; margin-top:10px; overflow:hidden; display:none;}
+  .progress-bar{height:100%; width:0%; background:var(--cyan); transition:width .2s;}
+  .progress-label{font-family:var(--mono); font-size:11px; color:var(--ink-dim); margin-top:4px; display:none;}
+  .ocr-note{font-size:11px; color:var(--ink-dim); margin-top:8px; line-height:1.5;}
+  .pdf-note{font-size:11px; color:var(--ink-dim); margin-top:6px;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="title-block">
+      <h1>LEVEL DATA PLOTTER <span>// laser-check analyzer</span></h1>
+      <div class="tag" data-i18n="headerTag">CSV / paste-in / photo — auto linear fit + mm/m</div>
+    </div>
+    <div class="controls">
+      <button class="toolbar-btn" id="themeBtn" title="Toggle theme">🎨 <span data-i18n="themeBtnLabel">Theme</span></button>
+      <button class="toolbar-btn" id="langBtn" title="Toggle language">🌐 <span id="langBtnLabel">EN</span></button>
+      <button class="primary-btn" id="exportBtn"><span data-i18n="exportPdfBtn">Export PDF</span></button>
+    </div>
+  </header>
+
+  <div class="section toolbar-grid">
+    <div class="panel">
+      <h2 data-i18n="ocrTitle">0. ถ่ายรูป / นำเข้ารูปตารางข้อมูล (OCR)</h2>
+      <div class="ocr-row">
+        <button type="button" class="ocr-btn" id="cameraBtn">📷 <span data-i18n="ocrCameraBtn">ถ่ายรูป</span></button>
+        <button type="button" class="ocr-btn" id="photoBtn">🖼️ <span data-i18n="ocrPhotoBtn">เลือกรูปภาพ</span></button>
+      </div>
+      <input type="file" id="cameraInput" accept="image/*" capture="environment">
+      <input type="file" id="photoInput" accept="image/*">
+      <img id="thumb" class="thumb">
+      <div class="progress" id="ocrProgress"><div class="progress-bar" id="ocrProgressBar"></div></div>
+      <div class="progress-label" id="ocrProgressLabel"></div>
+
+      <label id="ocrTextLabel" style="display:none;" data-i18n="ocrTextLabel">ข้อความที่อ่านได้ (ตรวจสอบ/แก้ไขก่อนใช้งาน)</label>
+      <textarea id="ocrText" style="display:none;"></textarea>
+      <div class="ocr-row" id="ocrActions" style="display:none;">
+        <button id="ocrFillBtn" style="margin-top:0; flex:1;"><span data-i18n="ocrFillBtn">เติมข้อมูลและ Plot</span></button>
+        <button class="ghost" id="ocrCsvBtn" style="margin-top:0;"><span data-i18n="ocrCsvBtn">ดาวน์โหลด .csv</span></button>
+      </div>
+      <div class="ocr-note" data-i18n="ocrNote">ระบบอ่านตัวเลขจากรูปด้วย OCR อัตโนมัติ อาจมีค่าผิดพลาดบางจุด กรุณาตรวจสอบตัวเลขในกล่องข้อความก่อนกด "เติมข้อมูลและ Plot" ทุกครั้ง</div>
+    </div>
+
+    <div class="panel">
+      <h2 data-i18n="importTitle">1. นำเข้าข้อมูล</h2>
+      <div class="drop" id="drop">
+        <p data-i18n="dropText">ลากไฟล์ .csv มาวาง หรือคลิกเพื่อเลือกไฟล์</p>
+        <small data-i18n="dropSub">คอลัมน์: ตำแหน่ง/ระยะ (mm), ค่าที่วัดได้ (mm)</small>
+      </div>
+      <input type="file" id="fileInput" accept=".csv,.txt">
+      <div class="fname" id="fname"></div>
+
+      <label data-i18n="pasteLabel">หรือวางข้อมูลตรงนี้ (คั่นด้วย comma หรือ tab)</label>
+      <textarea id="pasteBox" placeholder="Length,y&#10;0,-0.00264&#10;450,0.1548&#10;900,0.38908"></textarea>
+      <button id="parseBtn"><span data-i18n="plotBtn">Plot กราฟ</span></button>
+      <button class="ghost" id="clearBtn"><span data-i18n="clearBtn">ล้างข้อมูล</span></button>
+    </div>
+
+    <div class="panel">
+      <h2 data-i18n="settingsTitle">2. ตั้งค่า</h2>
+      <label data-i18n="tolLabel">ค่า tolerance ที่ยอมรับได้ (mm/m)</label>
+      <input type="number" id="tolInput" value="0.04" step="0.01" min="0">
+      <div class="pdf-note" data-i18n="pdfLangNote">หมายเหตุ: รายงาน PDF จะแสดงผลเป็นภาษาอังกฤษเสมอ เนื่องจากข้อจำกัดของฟอนต์ในไฟล์ PDF</div>
+    </div>
+  </div>
+
+  <div class="section stats-row" id="stats">
+    <div class="stat-card"><div class="k">Slope</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k">R²</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statMmM">mm / m (end-to-end)</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statPoints">จุดข้อมูล</div><div class="v">—</div></div>
+  </div>
+
+  <div class="section panel">
+    <h2 data-i18n="chartTitle">กราฟ — ค่าที่วัดได้ vs เส้นแนวโน้ม (linear fit)</h2>
+    <div class="chart-wrap">
+      <canvas id="chart" height="90"></canvas>
+      <div class="legend">
+        <span><span class="dot" style="background:#f2a23c"></span><span data-i18n="legendActual">ค่าที่วัดได้จริง</span></span>
+        <span><span class="dot" style="background:#4fd3e0"></span><span data-i18n="legendTrend">เส้นแนวโน้ม (linear fit)</span></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="section panel">
+    <h2 data-i18n="tableTitle">ตารางค่าที่ต้องปรับ (อ้างอิงจุดแรก = 0)</h2>
+    <div class="tbl-wrap">
+      <table id="dataTable">
+        <thead><tr>
+          <th>#</th>
+          <th data-i18n="thLength">ระยะ (mm)</th>
+          <th data-i18n="thValue">วัดได้ (mm)</th>
+          <th data-i18n="thDelta">Δ ช่วง (mm)</th>
+          <th data-i18n="thSlopeSeg">slope ช่วง (mm/m)</th>
+          <th data-i18n="thAdjust">ต้องปรับ (mm)</th>
+          <th data-i18n="thResidual">ส่วนต่างจาก Trendline (mm)</th>
+        </tr></thead>
+        <tbody><tr><td colspan="7" class="empty" data-i18n="emptyTable">ยังไม่มีข้อมูล — อัพโหลดหรือวางข้อมูลด้านซ้าย</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="section panel">
+    <h2 data-i18n="analysisTitle">3. วิเคราะห์และคำแนะนำในการแก้ไข</h2>
+    <div class="analysis" id="analysisPanel">
+      <div class="empty" data-i18n="emptyAnalysis">อัพโหลดข้อมูลก่อน ระบบจะวิเคราะห์และแนะนำวิธีแก้ไขให้อัตโนมัติ</div>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ---------- i18n ---------- */
+const i18n = {
+  th: {
+    headerTag: 'CSV / paste-in / photo — auto linear fit + mm/m',
+    themeBtnLabel: 'ธีม',
+    exportPdfBtn: 'Export PDF',
+    ocrTitle: '0. ถ่ายรูป / นำเข้ารูปตารางข้อมูล (OCR)',
+    ocrCameraBtn: 'ถ่ายรูป',
+    ocrPhotoBtn: 'เลือกรูปภาพ',
+    ocrTextLabel: 'ข้อความที่อ่านได้ (ตรวจสอบ/แก้ไขก่อนใช้งาน)',
+    ocrFillBtn: 'เติมข้อมูลและ Plot',
+    ocrCsvBtn: 'ดาวน์โหลด .csv',
+    ocrNote: 'ระบบอ่านตัวเลขจากรูปด้วย OCR อัตโนมัติ อาจมีค่าผิดพลาดบางจุด กรุณาตรวจสอบตัวเลขในกล่องข้อความก่อนกด "เติมข้อมูลและ Plot" ทุกครั้ง',
+    importTitle: '1. นำเข้าข้อมูล',
+    dropText: 'ลากไฟล์ .csv มาวาง หรือคลิกเพื่อเลือกไฟล์',
+    dropSub: 'คอลัมน์: ตำแหน่ง/ระยะ (mm), ค่าที่วัดได้ (mm)',
+    pasteLabel: 'หรือวางข้อมูลตรงนี้ (คั่นด้วย comma หรือ tab)',
+    plotBtn: 'Plot กราฟ',
+    clearBtn: 'ล้างข้อมูล',
+    settingsTitle: '2. ตั้งค่า',
+    tolLabel: 'ค่า tolerance ที่ยอมรับได้ (mm/m)',
+    pdfLangNote: 'หมายเหตุ: รายงาน PDF จะแสดงผลเป็นภาษาอังกฤษเสมอ เนื่องจากข้อจำกัดของฟอนต์ในไฟล์ PDF',
+    statMmM: 'mm / m (end-to-end)',
+    statPoints: 'จุดข้อมูล',
+    chartTitle: 'กราฟ — ค่าที่วัดได้ vs เส้นแนวโน้ม (linear fit)',
+    legendActual: 'ค่าที่วัดได้จริง',
+    legendTrend: 'เส้นแนวโน้ม (linear fit)',
+    axisLength: 'ระยะ / ตำแหน่ง (mm)',
+    axisValue: 'ค่าที่วัดได้ (mm)',
+    tableTitle: 'ตารางค่าที่ต้องปรับ (อ้างอิงจุดแรก = 0)',
+    thLength: 'ระยะ (mm)',
+    thValue: 'วัดได้ (mm)',
+    thDelta: 'Δ ช่วง (mm)',
+    thSlopeSeg: 'slope ช่วง (mm/m)',
+    thAdjust: 'ต้องปรับ (mm)',
+    thResidual: 'ส่วนต่างจาก Trendline (mm)',
+    emptyTable: 'ยังไม่มีข้อมูล — อัพโหลดหรือวางข้อมูลด้านซ้าย',
+    emptyTableParse: 'ไม่พบข้อมูลตัวเลขที่ใช้ได้ — ตรวจสอบรูปแบบไฟล์',
+    analysisTitle: '3. วิเคราะห์และคำแนะนำในการแก้ไข',
+    emptyAnalysis: 'อัพโหลดข้อมูลก่อน ระบบจะวิเคราะห์และแนะนำวิธีแก้ไขให้อัตโนมัติ',
+    alertNoData: 'กรุณาอัพโหลดหรือ plot ข้อมูลก่อน export PDF',
+    alertLoadingLib: 'กำลังโหลดไลบรารี...',
+    alertLibFail: 'โหลดไลบรารีสร้าง PDF ไม่สำเร็จ กรุณาตรวจสอบว่าเครื่องต่ออินเทอร์เน็ตอยู่ แล้วลองรีเฟรชหน้านี้ใหม่',
+    ocrPrep: 'กำลังเตรียม OCR...',
+    ocrReading: 'กำลังอ่านตัวเลข... ',
+    ocrLibFail: 'ไม่สามารถโหลดไลบรารี OCR ได้ กรุณาตรวจสอบอินเทอร์เน็ตแล้วลองใหม่',
+    ocrWorkerFail: 'อ่านรูปไม่สำเร็จ: หน้าตัวอย่างนี้บล็อกการสร้าง Web Worker — กรุณาเปิดไฟล์นี้โดยตรงในเบราว์เซอร์ (ดับเบิลคลิกไฟล์) แทนหน้าตัวอย่างในแชท แล้วลองใหม่',
+    ocrGenericFail: 'อ่านรูปไม่สำเร็จ: ',
+    ocrNoPairs: 'ไม่พบตัวเลขอย่างน้อย 2 คอลัมน์ กรุณาตรวจสอบ/แก้ไขข้อความก่อน',
+    analysisSummary: 'สรุปภาพรวม',
+    overallLine: 'ความเอียงรวมตลอดแนว (จุดแรกถึงจุดสุดท้าย) = ',
+    overExceed: 'เกิน tolerance',
+    overOk: 'อยู่ในเกณฑ์',
+    patternLinear: 'เอียงเป็น<b>เส้นตรงสม่ำเสมอ</b> (R² เชิงเส้น ',
+    patternLinearEnd: ') — ไม่มีการบิด/โก่งของแนว ปรับสองปลายให้เท่ากันแล้วจุดกลางจะเข้าที่ตามไปด้วย',
+    patternCurve: 'มี<b>ความโค้ง/บิด</b>ปนอยู่ (fit เส้นโค้ง R² = ',
+    patternCurveMid: ' ดีกว่าเส้นตรง R² = ',
+    patternCurveEnd: ') — ควรตรวจจุดกลางแนวเพิ่มเติม ไม่ใช่แค่ปรับปลายสองข้าง',
+    patternPrefix: 'รูปแบบข้อมูล: ',
+    overTolTitle: 'ช่วงที่เกิน tolerance',
+    overTolFrom: ' จาก ',
+    overTolSpans: ' ช่วง',
+    noneOverTol: 'ไม่มีช่วงใดเกิน tolerance ที่ตั้งไว้',
+    worstTitle: 'ช่วงที่เอียงมากที่สุด 3 อันดับ',
+    pointWord: 'จุด',
+    recTitle: 'แนวทางแก้ไข',
+    rec1: 'ตรึงจุดแรก (จุด 1) เป็นจุดอ้างอิง ไม่ขยับ',
+    rec2Linear: 'ปรับจุดสุดท้ายให้ค่าใกล้ 0 เทียบจุดแรกก่อน แล้วไล่ปรับจุดกลางตามสัดส่วนระยะ',
+    rec2Curve: 'ปรับปลายทั้งสองข้างก่อน แล้วเช็คจุดกลางซ้ำ เพราะมีความโค้ง/บิดที่การปรับปลายอย่างเดียวแก้ไม่หมด',
+    rec3: 'เน้นแก้ช่วงที่เกิน tolerance ก่อน โดยเฉพาะช่วงที่ slope สูงสุด 3 อันดับด้านบน',
+    rec4: 'วัดซ้ำทั้งชุดหลังปรับ 1 รอบ เพราะการขยับจุดหนึ่งจะกระทบจุดข้างเคียงเล็กน้อย ทำซ้ำจนทุกช่วง ≤ tolerance'
+  },
+  en: {
+    headerTag: 'CSV / paste-in / photo — auto linear fit + mm/m',
+    themeBtnLabel: 'Theme',
+    exportPdfBtn: 'Export PDF',
+    ocrTitle: '0. Take Photo / Import Photo of Data Table (OCR)',
+    ocrCameraBtn: 'Take photo',
+    ocrPhotoBtn: 'Choose photo',
+    ocrTextLabel: 'Recognized text (review/edit before use)',
+    ocrFillBtn: 'Fill data & Plot',
+    ocrCsvBtn: 'Download .csv',
+    ocrNote: 'Numbers are read from the photo via OCR automatically and may contain errors. Please review the text box before clicking "Fill data & Plot".',
+    importTitle: '1. Import Data',
+    dropText: 'Drag a .csv file here, or click to choose a file',
+    dropSub: 'Columns: position/length (mm), measured value (mm)',
+    pasteLabel: 'Or paste data here (comma or tab separated)',
+    plotBtn: 'Plot Chart',
+    clearBtn: 'Clear Data',
+    settingsTitle: '2. Settings',
+    tolLabel: 'Acceptable tolerance (mm/m)',
+    pdfLangNote: 'Note: the PDF report always renders in English due to PDF font limitations.',
+    statMmM: 'mm / m (end-to-end)',
+    statPoints: 'Data Points',
+    chartTitle: 'Chart — Measured Values vs Trend Line (linear fit)',
+    legendActual: 'Measured values',
+    legendTrend: 'Trend line (linear fit)',
+    axisLength: 'Length / position (mm)',
+    axisValue: 'Measured value (mm)',
+    tableTitle: 'Adjustment Table (reference: first point = 0)',
+    thLength: 'Length (mm)',
+    thValue: 'Value (mm)',
+    thDelta: 'Δ segment (mm)',
+    thSlopeSeg: 'segment slope (mm/m)',
+    thAdjust: 'Adjust (mm)',
+    thResidual: 'Diff from trendline (mm)',
+    emptyTable: 'No data yet — upload or paste data on the left',
+    emptyTableParse: 'No usable numeric data found — check the file format',
+    analysisTitle: '3. Analysis & Recommendations',
+    emptyAnalysis: 'Upload data first — the system will analyze and suggest fixes automatically',
+    alertNoData: 'Please upload or plot data before exporting a PDF',
+    alertLoadingLib: 'Loading library...',
+    alertLibFail: 'Failed to load the PDF library. Please check your internet connection and refresh the page.',
+    ocrPrep: 'Preparing OCR...',
+    ocrReading: 'Reading numbers... ',
+    ocrLibFail: 'Could not load the OCR library. Please check your internet connection and try again.',
+    ocrWorkerFail: 'Failed to read the photo: this preview blocks Web Worker creation — please open this file directly in a browser (double-click the file) instead of the chat preview, then try again.',
+    ocrGenericFail: 'Failed to read the photo: ',
+    ocrNoPairs: 'Could not find at least 2 numeric columns. Please review/edit the text first.',
+    analysisSummary: 'Overall Summary',
+    overallLine: 'Overall tilt across the whole run (first point to last point) = ',
+    overExceed: 'exceeds tolerance',
+    overOk: 'within tolerance',
+    patternLinear: 'The tilt is a <b>consistent straight line</b> (linear R² ',
+    patternLinearEnd: ') — no twisting/bowing. Adjust both ends level and the middle points will fall into place.',
+    patternCurve: 'There is <b>curvature/twist</b> present (curved fit R² = ',
+    patternCurveMid: ' vs linear R² = ',
+    patternCurveEnd: ') — check the middle points too, not just the two ends.',
+    patternPrefix: 'Data pattern: ',
+    overTolTitle: 'Segments exceeding tolerance',
+    overTolFrom: ' out of ',
+    overTolSpans: ' segments',
+    noneOverTol: 'No segment exceeds the set tolerance',
+    worstTitle: 'Top 3 steepest segments',
+    pointWord: 'Point',
+    recTitle: 'Recommended fix',
+    rec1: 'Fix point 1 as the reference datum — do not move it',
+    rec2Linear: 'Adjust the last point close to 0 relative to the first point, then adjust the middle points proportionally by distance',
+    rec2Curve: 'Adjust both ends first, then recheck the middle points, since curvature/twist cannot be fully fixed by adjusting the ends alone',
+    rec3: 'Prioritize fixing segments that exceed tolerance, especially the top 3 steepest segments above',
+    rec4: 'Re-measure the whole set after one adjustment pass, since moving one point slightly affects neighboring points. Repeat until every segment is within tolerance'
+  }
+};
+
+let currentLang = localStorage.getItem('ldp_lang') || 'th';
+function t(key){ return (i18n[currentLang] && i18n[currentLang][key]) || i18n.th[key] || key; }
+
+function applyLanguage(lang){
+  currentLang = lang;
+  localStorage.setItem('ldp_lang', lang);
+  document.documentElement.lang = lang;
+  document.querySelectorAll('[data-i18n]').forEach(el => {
+    const key = el.getAttribute('data-i18n');
+    if(i18n[lang] && i18n[lang][key] !== undefined) el.textContent = i18n[lang][key];
+  });
+  document.getElementById('langBtnLabel').textContent = lang === 'th' ? 'EN' : 'TH';
+  if(lastPoints && lastFit){
+    renderStats(lastPoints, lastFit);
+    renderChart(lastPoints, lastFit);
+    renderTable(lastPoints, lastFit);
+    generateAnalysis(lastPoints, lastFit);
+  } else {
+    document.querySelector('#dataTable tbody').innerHTML =
+      '<tr><td colspan="7" class="empty">' + t('emptyTable') + '</td></tr>';
+    document.getElementById('analysisPanel').innerHTML =
+      '<div class="empty">' + t('emptyAnalysis') + '</div>';
+  }
+}
+
+document.getElementById('langBtn').addEventListener('click', () => {
+  applyLanguage(currentLang === 'th' ? 'en' : 'th');
+});
+
+/* ---------- Theme ---------- */
+const THEMES = ['dark', 'blueprint', 'terminal'];
+let currentTheme = localStorage.getItem('ldp_theme') || 'dark';
+
+function applyTheme(theme){
+  currentTheme = theme;
+  localStorage.setItem('ldp_theme', theme);
+  if(theme === 'dark'){
+    document.documentElement.removeAttribute('data-theme');
+  } else {
+    document.documentElement.setAttribute('data-theme', theme);
+  }
+  if(lastPoints && lastFit) renderChart(lastPoints, lastFit);
+}
+
+document.getElementById('themeBtn').addEventListener('click', () => {
+  const idx = THEMES.indexOf(currentTheme);
+  applyTheme(THEMES[(idx + 1) % THEMES.length]);
+});
+
+function themeColor(varName){
+  return getComputedStyle(document.documentElement).getPropertyValue(varName).trim();
+}
+
+/* ---------- Core state ---------- */
+let chartInstance = null;
+let lastPoints = null;
+let lastFit = null;
+
+const tolInput = document.getElementById('tolInput');
+tolInput.addEventListener('input', () => {
+  if(lastPoints && lastFit){
+    renderTable(lastPoints, lastFit);
+    generateAnalysis(lastPoints, lastFit);
+  }
+});
+
+const dropEl = document.getElementById('drop');
+const fileInput = document.getElementById('fileInput');
+const fnameEl = document.getElementById('fname');
+const pasteBox = document.getElementById('pasteBox');
+
+dropEl.addEventListener('click', () => fileInput.click());
+dropEl.addEventListener('dragover', e => { e.preventDefault(); dropEl.classList.add('drag'); });
+dropEl.addEventListener('dragleave', () => dropEl.classList.remove('drag'));
+dropEl.addEventListener('drop', e => {
+  e.preventDefault(); dropEl.classList.remove('drag');
+  if(e.dataTransfer.files.length) handleFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', e => { if(e.target.files.length) handleFile(e.target.files[0]); });
+
+function handleFile(file){
+  fnameEl.textContent = file.name;
+  const reader = new FileReader();
+  reader.onload = e => {
+    pasteBox.value = e.target.result;
+    processData(e.target.result);
+  };
+  reader.readAsText(file);
+}
+
+document.getElementById('parseBtn').addEventListener('click', () => processData(pasteBox.value));
+document.getElementById('clearBtn').addEventListener('click', () => {
+  pasteBox.value = ''; fnameEl.textContent = ''; fileInput.value = '';
+  resetView();
+});
+
+/* ---------- OCR ---------- */
+const cameraInput = document.getElementById('cameraInput');
+const photoInput = document.getElementById('photoInput');
+const cameraBtn = document.getElementById('cameraBtn');
+const photoBtn = document.getElementById('photoBtn');
+cameraBtn.addEventListener('click', () => cameraInput.click());
+photoBtn.addEventListener('click', () => photoInput.click());
+const thumbEl = document.getElementById('thumb');
+const ocrProgress = document.getElementById('ocrProgress');
+const ocrProgressBar = document.getElementById('ocrProgressBar');
+const ocrProgressLabel = document.getElementById('ocrProgressLabel');
+const ocrTextLabel = document.getElementById('ocrTextLabel');
+const ocrText = document.getElementById('ocrText');
+const ocrActions = document.getElementById('ocrActions');
+
+cameraInput.addEventListener('change', e => { if(e.target.files.length) handleImage(e.target.files[0]); });
+photoInput.addEventListener('change', e => { if(e.target.files.length) handleImage(e.target.files[0]); });
+
+async function handleImage(file){
+  thumbEl.src = URL.createObjectURL(file);
+  thumbEl.style.display = 'block';
+  ocrProgress.style.display = 'block';
+  ocrProgressLabel.style.display = 'block';
+  ocrProgressBar.style.width = '0%';
+  ocrProgressLabel.textContent = t('ocrPrep');
+  ocrTextLabel.style.display = 'none';
+  ocrText.style.display = 'none';
+  ocrActions.style.display = 'none';
+
+  if(typeof Tesseract === 'undefined'){
+    ocrProgressLabel.textContent = t('ocrLibFail');
+    return;
+  }
+
+  try{
+    const result = await Tesseract.recognize(file, 'eng', {
+      workerPath: 'https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/worker.min.js',
+      corePath: 'https://cdn.jsdelivr.net/npm/tesseract.js-core@5/tesseract-core-simd.wasm.js',
+      logger: m => {
+        if(m.status === 'recognizing text'){
+          const pct = Math.round((m.progress || 0) * 100);
+          ocrProgressBar.style.width = pct + '%';
+          ocrProgressLabel.textContent = t('ocrReading') + pct + '%';
+        } else if(m.status){
+          ocrProgressLabel.textContent = m.status;
+        }
+      }
+    });
+    ocrProgress.style.display = 'none';
+    ocrProgressLabel.style.display = 'none';
+    ocrText.value = result.data.text.trim();
+    ocrTextLabel.style.display = 'block';
+    ocrText.style.display = 'block';
+    ocrActions.style.display = 'flex';
+  } catch(err){
+    const msg = String(err && err.message || err);
+    if(msg.includes('Worker') || msg.includes('blob')){
+      ocrProgressLabel.textContent = t('ocrWorkerFail');
+    } else {
+      ocrProgressLabel.textContent = t('ocrGenericFail') + msg;
+    }
+  }
+}
+
+function extractPairsFromText(text){
+  const lines = text.split(/\r?\n/);
+  const pairs = [];
+  for(const line of lines){
+    const nums = (line.match(/-?\d+\.?\d*/g) || []).map(parseFloat).filter(n => !isNaN(n));
+    if(nums.length < 2) continue;
+    const x = nums[nums.length - 2];
+    const y = nums[nums.length - 1];
+    pairs.push({x, y});
+  }
+  return pairs;
+}
+
+document.getElementById('ocrFillBtn').addEventListener('click', () => {
+  const pairs = extractPairsFromText(ocrText.value);
+  if(pairs.length < 2){ alert(t('ocrNoPairs')); return; }
+  const csvText = 'Length_mm,y_mm\n' + pairs.map(p => p.x + ',' + p.y).join('\n');
+  pasteBox.value = csvText;
+  processData(csvText);
+});
+
+document.getElementById('ocrCsvBtn').addEventListener('click', () => {
+  const pairs = extractPairsFromText(ocrText.value);
+  if(pairs.length < 2){ alert(t('ocrNoPairs')); return; }
+  const csvText = 'Length_mm,y_mm\n' + pairs.map(p => p.x + ',' + p.y).join('\n') + '\n';
+  const blob = new Blob([csvText], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = 'level_data_from_photo.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+});
+
+/* ---------- Math ---------- */
+function parseCSV(text){
+  const rows = text.trim().split(/\r?\n/).map(r => r.split(/[,\t]/).map(c => c.trim()));
+  if(!rows.length) return null;
+
+  let start = 0;
+  let firstRowIsHeader = rows[0].some(c => isNaN(parseFloat(c)) || c === '');
+  if(firstRowIsHeader) start = 1;
+
+  const points = [];
+  for(let i = start; i < rows.length; i++){
+    const cols = rows[i].filter(c => c !== '');
+    if(cols.length < 2) continue;
+    const nums = cols.map(c => parseFloat(c.replace(/[^\d.\-]/g,'')));
+    const validNums = nums.filter(n => !isNaN(n));
+    if(validNums.length < 2) continue;
+    const x = validNums[validNums.length - 2];
+    const y = validNums[validNums.length - 1];
+    if(isNaN(x) || isNaN(y)) continue;
+    points.push({x, y});
+  }
+  return points;
+}
+
+function linearFit(points){
+  const n = points.length;
+  const sx = points.reduce((a,p) => a+p.x, 0);
+  const sy = points.reduce((a,p) => a+p.y, 0);
+  const sxy = points.reduce((a,p) => a+p.x*p.y, 0);
+  const sxx = points.reduce((a,p) => a+p.x*p.x, 0);
+  const slope = (n*sxy - sx*sy) / (n*sxx - sx*sx);
+  const intercept = (sy - slope*sx) / n;
+  const meanY = sy/n;
+  const ssTot = points.reduce((a,p) => a + (p.y-meanY)**2, 0);
+  const ssRes = points.reduce((a,p) => a + (p.y - (slope*p.x+intercept))**2, 0);
+  const r2 = 1 - ssRes/ssTot;
+  return {slope, intercept, r2};
+}
+
+function quadFitR2(points, linFit){
+  const n = points.length;
+  let S0=n,S1=0,S2=0,S3=0,S4=0,T0=0,T1=0,T2=0;
+  for(const p of points){
+    const x=p.x, y=p.y, x2=x*x;
+    S1+=x; S2+=x2; S3+=x2*x; S4+=x2*x2;
+    T0+=y; T1+=x*y; T2+=x2*y;
+  }
+  const A=[[S4,S3,S2],[S3,S2,S1],[S2,S1,S0]];
+  const B=[T2,T1,T0];
+  const abc = solve3x3(A,B);
+  if(!abc) return { r2: linFit.r2, hasCurve:false };
+  const [a,b,c] = abc;
+  const meanY = T0/n;
+  const ssTot = points.reduce((acc,p)=>acc+(p.y-meanY)**2,0);
+  const ssRes = points.reduce((acc,p)=>{
+    const pred = a*p.x*p.x + b*p.x + c;
+    return acc + (p.y-pred)**2;
+  },0);
+  const r2 = 1 - ssRes/ssTot;
+  return { r2, hasCurve:true };
+}
+
+function solve3x3(A,B){
+  const M = A.map((row,i)=>[...row, B[i]]);
+  for(let i=0;i<3;i++){
+    let piv=i;
+    for(let k=i+1;k<3;k++) if(Math.abs(M[k][i])>Math.abs(M[piv][i])) piv=k;
+    if(Math.abs(M[piv][i])<1e-12) return null;
+    [M[i],M[piv]]=[M[piv],M[i]];
+    for(let k=i+1;k<3;k++){
+      const f=M[k][i]/M[i][i];
+      for(let j=i;j<4;j++) M[k][j]-=f*M[i][j];
+    }
+  }
+  const x=[0,0,0];
+  for(let i=2;i>=0;i--){
+    let s=M[i][3];
+    for(let j=i+1;j<3;j++) s-=M[i][j]*x[j];
+    x[i]=s/M[i][i];
+  }
+  return x;
+}
+
+function processData(text){
+  if(!text || !text.trim()){ resetView(); return; }
+  const points = parseCSV(text);
+  if(!points || points.length < 2){
+    document.querySelector('#dataTable tbody').innerHTML = '<tr><td colspan="7" class="empty">' + t('emptyTableParse') + '</td></tr>';
+    return;
+  }
+  points.sort((a,b) => a.x - b.x);
+  const fit = linearFit(points);
+  lastPoints = points;
+  lastFit = fit;
+  renderStats(points, fit);
+  renderChart(points, fit);
+  renderTable(points, fit);
+  generateAnalysis(points, fit);
+}
+
+function resetView(){
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="k">Slope</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k">R²</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statMmM">${t('statMmM')}</div><div class="v">—</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statPoints">${t('statPoints')}</div><div class="v">—</div></div>`;
+  document.querySelector('#dataTable tbody').innerHTML = '<tr><td colspan="7" class="empty">' + t('emptyTable') + '</td></tr>';
+  document.getElementById('analysisPanel').innerHTML = '<div class="empty">' + t('emptyAnalysis') + '</div>';
+  lastPoints = null; lastFit = null;
+  if(chartInstance){ chartInstance.destroy(); chartInstance = null; }
+}
+
+function renderStats(points, fit){
+  const totalLenM = (points[points.length-1].x - points[0].x) / 1000;
+  const mmPerM = totalLenM > 0 ? (points[points.length-1].y - points[0].y) / totalLenM : 0;
+  const r2class = fit.r2 > 0.95 ? 'ok' : (fit.r2 < 0.7 ? 'warn' : '');
+  document.getElementById('stats').innerHTML = `
+    <div class="stat-card"><div class="k">Slope</div><div class="v">${fit.slope.toFixed(6)}</div></div>
+    <div class="stat-card"><div class="k">R²</div><div class="v ${r2class}">${fit.r2.toFixed(4)}</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statMmM">${t('statMmM')}</div><div class="v">${mmPerM.toFixed(3)}</div></div>
+    <div class="stat-card"><div class="k" data-i18n="statPoints">${t('statPoints')}</div><div class="v">${points.length}</div></div>`;
+}
+
+function renderChart(points, fit){
+  const ctx = document.getElementById('chart');
+  if(chartInstance) chartInstance.destroy();
+  const xMin = points[0].x, xMax = points[points.length-1].x;
+  const fitLine = [
+    {x: xMin, y: fit.slope*xMin + fit.intercept},
+    {x: xMax, y: fit.slope*xMax + fit.intercept}
+  ];
+  const inkDim = themeColor('--ink-dim') || '#8fa3ba';
+  const lineColor = themeColor('--line') || '#26384d';
+  const amber = themeColor('--amber') || '#f2a23c';
+  const cyan = themeColor('--cyan') || '#4fd3e0';
+  chartInstance = new Chart(ctx, {
+    data: {
+      datasets: [
+        { type:'scatter', label:t('legendActual'), data: points, backgroundColor:amber, borderColor:amber, pointRadius:5, showLine:true, borderWidth:2 },
+        { type:'line', label:t('legendTrend'), data: fitLine, borderColor:cyan, borderWidth:2, borderDash:[7,5], pointRadius:0 }
+      ]
+    },
+    options: {
+      responsive:true,
+      maintainAspectRatio:true,
+      plugins:{ legend:{ display:false } },
+      scales:{
+        x:{ type:'linear', title:{display:true, text:t('axisLength'), color:inkDim}, ticks:{color:inkDim}, grid:{color:lineColor} },
+        y:{ title:{display:true, text:t('axisValue'), color:inkDim}, ticks:{color:inkDim}, grid:{color:lineColor} }
+      }
+    }
+  });
+}
+
+function renderTable(points, fit){
+  const tol = parseFloat(tolInput.value) || 0.04;
+  const rows = points.map((p, i) => {
+    const prev = i > 0 ? points[i-1] : null;
+    const dy = prev ? p.y - prev.y : 0;
+    const dx = prev ? (p.x - prev.x) : 0;
+    const slopeSeg = (prev && dx > 0) ? (dy / (dx/1000)) : 0;
+    const adjust = -(p.y - points[0].y);
+    const exceeds = prev && Math.abs(slopeSeg) > tol;
+    const predicted = fit.slope * p.x + fit.intercept;
+    const residual = p.y - predicted;
+    const residualHigh = Math.abs(residual) > (points[points.length-1].y - points[0].y) * 0.05 + 0.02;
+    return `<tr class="${exceeds ? 'flag' : ''}">
+      <td>${i+1}</td>
+      <td>${p.x.toLocaleString()}</td>
+      <td>${p.y.toFixed(5)}</td>
+      <td>${prev ? dy.toFixed(5) : '—'}</td>
+      <td>${prev ? slopeSeg.toFixed(3) : '—'}</td>
+      <td>${adjust.toFixed(5)}</td>
+      <td class="${residualHigh ? 'resid-flag' : ''}">${residual >= 0 ? '+' : ''}${residual.toFixed(5)}</td>
+    </tr>`;
+  }).join('');
+  document.querySelector('#dataTable tbody').innerHTML = rows;
+}
+
+function generateAnalysis(points, fit){
+  const tol = parseFloat(tolInput.value) || 0.04;
+  const n = points.length;
+  const totalLenM = (points[n-1].x - points[0].x) / 1000;
+  const mmPerM = totalLenM > 0 ? (points[n-1].y - points[0].y) / totalLenM : 0;
+  const quad = quadFitR2(points, fit);
+  const isLinearTilt = !quad.hasCurve || (quad.r2 - fit.r2) < 0.02;
+
+  const segs = [];
+  for(let i=1;i<n;i++){
+    const dx = (points[i].x - points[i-1].x)/1000;
+    const dy = points[i].y - points[i-1].y;
+    if(dx>0) segs.push({from:i, to:i+1, slope: dy/dx});
+  }
+  const overTol = segs.filter(s => Math.abs(s.slope) > tol);
+  const worst = [...segs].sort((a,b)=>Math.abs(b.slope)-Math.abs(a.slope)).slice(0,3);
+
+  const overallClass = Math.abs(mmPerM) > tol ? 'warn' : 'ok';
+  const overallLabel = Math.abs(mmPerM) > tol ? t('overExceed') : t('overOk');
+  const pw = t('pointWord');
+
+  let html = '';
+  html += `<h3>${t('analysisSummary')}</h3>`;
+  html += `<p>${t('overallLine')}<span class="num">${mmPerM.toFixed(3)} mm/m</span>
+    <span class="badge ${overallClass}">${overallLabel} (tolerance ${tol} mm/m)</span></p>`;
+  html += `<p>${t('patternPrefix')}${isLinearTilt
+    ? t('patternLinear') + fit.r2.toFixed(4) + t('patternLinearEnd')
+    : t('patternCurve') + quad.r2.toFixed(4) + t('patternCurveMid') + fit.r2.toFixed(4) + t('patternCurveEnd')}</p>`;
+
+  html += `<h3>${t('overTolTitle')} (${overTol.length}${t('overTolFrom')}${segs.length}${t('overTolSpans')})</h3>`;
+  if(overTol.length){
+    html += '<ul>' + overTol.map(s => `<li>${pw} ${s.from} → ${s.to}: <span class="num">${s.slope.toFixed(3)} mm/m</span></li>`).join('') + '</ul>';
+  } else {
+    html += `<p>${t('noneOverTol')}</p>`;
+  }
+
+  html += `<h3>${t('worstTitle')}</h3>`;
+  html += '<ul>' + worst.map(s => `<li>${pw} ${s.from} → ${s.to}: <span class="num">${s.slope.toFixed(3)} mm/m</span></li>`).join('') + '</ul>';
+
+  html += `<h3>${t('recTitle')}</h3>`;
+  html += `<ul>
+    <li>${t('rec1')}</li>
+    <li>${isLinearTilt ? t('rec2Linear') : t('rec2Curve')}</li>
+    <li>${t('rec3')}</li>
+    <li>${t('rec4')}</li>
+  </ul>`;
+
+  document.getElementById('analysisPanel').innerHTML = html;
+}
+
+/* ---------- PDF export (always English — PDF core fonts have no Thai glyphs) ---------- */
+const exportBtn = document.getElementById('exportBtn');
+exportBtn.addEventListener('click', exportPDF);
+
+function exportPDF(){
+  if(!lastPoints || !lastFit){ alert(t('alertNoData')); return; }
+  if(!window.jspdf || !window.jspdf.jsPDF){
+    exportBtn.textContent = t('alertLoadingLib');
+    exportBtn.disabled = true;
+    let tries = 0;
+    const retry = setInterval(() => {
+      tries++;
+      if(window.jspdf && window.jspdf.jsPDF){
+        clearInterval(retry);
+        exportBtn.innerHTML = '<span data-i18n="exportPdfBtn">' + t('exportPdfBtn') + '</span>';
+        exportBtn.disabled = false;
+        exportPDF();
+      } else if(tries >= 12){
+        clearInterval(retry);
+        exportBtn.innerHTML = '<span data-i18n="exportPdfBtn">' + t('exportPdfBtn') + '</span>';
+        exportBtn.disabled = false;
+        alert(t('alertLibFail'));
+      }
+    }, 400);
+    return;
+  }
+  buildPDF();
+}
+
+function buildEnglishAnalysisLines(points, fit){
+  const tolLocal = i18n.en;
+  const tol = parseFloat(tolInput.value) || 0.04;
+  const n = points.length;
+  const totalLenM = (points[n-1].x - points[0].x) / 1000;
+  const mmPerM = totalLenM > 0 ? (points[n-1].y - points[0].y) / totalLenM : 0;
+  const quad = quadFitR2(points, fit);
+  const isLinearTilt = !quad.hasCurve || (quad.r2 - fit.r2) < 0.02;
+  const segs = [];
+  for(let i=1;i<n;i++){
+    const dx = (points[i].x - points[i-1].x)/1000;
+    const dy = points[i].y - points[i-1].y;
+    if(dx>0) segs.push({from:i, to:i+1, slope: dy/dx});
+  }
+  const overTol = segs.filter(s => Math.abs(s.slope) > tol);
+  const worst = [...segs].sort((a,b)=>Math.abs(b.slope)-Math.abs(a.slope)).slice(0,3);
+
+  const lines = [];
+  lines.push('', 'OVERALL SUMMARY');
+  lines.push('Overall tilt end-to-end = ' + mmPerM.toFixed(3) + ' mm/m (' + (Math.abs(mmPerM) > tol ? 'exceeds' : 'within') + ' tolerance ' + tol + ' mm/m)');
+  lines.push(isLinearTilt
+    ? 'Pattern: consistent straight tilt (linear R2 = ' + fit.r2.toFixed(4) + ') - no twist/bow. Adjust both ends and the middle will follow.'
+    : 'Pattern: curvature/twist present (curved R2 = ' + quad.r2.toFixed(4) + ' vs linear R2 = ' + fit.r2.toFixed(4) + ') - check middle points too.');
+
+  lines.push('', 'SEGMENTS EXCEEDING TOLERANCE (' + overTol.length + ' of ' + segs.length + ')');
+  if(overTol.length){
+    overTol.forEach(s => lines.push('- Point ' + s.from + ' to ' + s.to + ': ' + s.slope.toFixed(3) + ' mm/m'));
+  } else {
+    lines.push('None');
+  }
+
+  lines.push('', 'TOP 3 STEEPEST SEGMENTS');
+  worst.forEach(s => lines.push('- Point ' + s.from + ' to ' + s.to + ': ' + s.slope.toFixed(3) + ' mm/m'));
+
+  lines.push('', 'RECOMMENDED FIX');
+  lines.push('- Fix point 1 as the reference datum, do not move it');
+  lines.push('- ' + (isLinearTilt
+    ? 'Adjust the last point close to 0 relative to point 1, then adjust middle points proportionally by distance'
+    : 'Adjust both ends first, then recheck the middle points, since curvature cannot be fixed by the ends alone'));
+  lines.push('- Prioritize the segments exceeding tolerance, especially the top 3 above');
+  lines.push('- Re-measure the whole set after one adjustment pass and repeat until every segment is within tolerance');
+
+  return lines.join('\n').trim();
+}
+
+function buildPDF(){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'mm', format:'a4' });
+  const pageW = 210, marginX = 15, maxY = 282;
+  let y = 18;
+
+  const checkBreak = (need) => {
+    if(y + need > maxY){ doc.addPage(); y = 18; }
+  };
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(16);
+  doc.text('Level Data Plotter - Report', marginX, y); y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9); doc.setTextColor(90);
+  doc.text('Generated: ' + new Date().toLocaleString(), marginX, y); y += 8;
+  doc.setTextColor(0);
+
+  const tol = parseFloat(tolInput.value) || 0.04;
+  const n = lastPoints.length;
+  const totalLenM = (lastPoints[n-1].x - lastPoints[0].x) / 1000;
+  const mmPerM = totalLenM > 0 ? (lastPoints[n-1].y - lastPoints[0].y) / totalLenM : 0;
+
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('Summary', marginX, y); y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(10);
+  const summaryLines = [
+    'Slope: ' + lastFit.slope.toFixed(6) + '   R-squared: ' + lastFit.r2.toFixed(4),
+    'Overall mm/m (end-to-end): ' + mmPerM.toFixed(3) + '   Tolerance set: ' + tol + ' mm/m',
+    'Data points: ' + n
+  ];
+  summaryLines.forEach(line => { doc.text(line, marginX, y); y += 5.5; });
+  y += 3;
+
+  const canvas = document.getElementById('chart');
+  if(canvas){
+    checkBreak(90);
+    const imgData = canvas.toDataURL('image/png', 1.0);
+    const imgW = pageW - marginX*2;
+    const imgH = imgW * (canvas.height / canvas.width);
+    doc.setFont('helvetica','bold'); doc.setFontSize(11);
+    doc.text('Chart', marginX, y); y += 5;
+    doc.addImage(imgData, 'PNG', marginX, y, imgW, Math.min(imgH, 85));
+    y += Math.min(imgH, 85) + 8;
+  }
+
+  checkBreak(10);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('Data table (reference: point 1 = 0)', marginX, y); y += 6;
+  doc.setFontSize(8.5);
+  const colX = [marginX, marginX+10, marginX+32, marginX+54, marginX+76, marginX+98, marginX+123];
+  const headers = ['#','Length(mm)','Value(mm)','d(mm)','slope(mm/m)','adjust(mm)','resid(mm)'];
+  const printHeader = () => {
+    doc.setFont('helvetica','bold');
+    headers.forEach((h,i) => doc.text(h, colX[i], y));
+    y += 5;
+    doc.setFont('helvetica','normal');
+  };
+  printHeader();
+  lastPoints.forEach((p,i) => {
+    checkBreak(6);
+    if(y === 18) printHeader();
+    const prev = i>0 ? lastPoints[i-1] : null;
+    const dy = prev ? p.y - prev.y : 0;
+    const dx = prev ? (p.x-prev.x)/1000 : 0;
+    const slopeSeg = (prev && dx>0) ? dy/dx : 0;
+    const adjust = -(p.y - lastPoints[0].y);
+    const exceeds = prev && Math.abs(slopeSeg) > tol;
+    if(exceeds) doc.setTextColor(200,50,50); else doc.setTextColor(0);
+    const residual = p.y - (lastFit.slope*p.x + lastFit.intercept);
+    const vals = [String(i+1), p.x.toLocaleString(), p.y.toFixed(5), prev?dy.toFixed(5):'-', prev?slopeSeg.toFixed(3):'-', adjust.toFixed(5), (residual>=0?'+':'') + residual.toFixed(5)];
+    vals.forEach((v,c) => doc.text(v, colX[c], y));
+    y += 5;
+  });
+  doc.setTextColor(0);
+  y += 4;
+
+  checkBreak(20);
+  doc.setFont('helvetica','bold'); doc.setFontSize(11);
+  doc.text('Analysis & recommendations', marginX, y); y += 6;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9);
+  const analysisText = buildEnglishAnalysisLines(lastPoints, lastFit);
+  const wrapped = doc.splitTextToSize(analysisText, pageW - marginX*2);
+  wrapped.forEach(line => {
+    checkBreak(5.5);
+    doc.text(line, marginX, y);
+    y += 5;
+  });
+
+  doc.save('level_data_report.pdf');
+}
+
+/* ---------- Init ---------- */
+applyTheme(currentTheme);
+applyLanguage(currentLang);
+</script>
+</body>
+</html>
